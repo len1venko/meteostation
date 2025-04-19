@@ -1,0 +1,125 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+  <title>Сторінка з графіками</title>
+  <script src="https://code.highcharts.com/stock/highstock.js"></script> <!-- изменено -->
+  <link rel="stylesheet" href="/pac.css">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f3f3f3; color: #333; }
+    .container { max-width: 800px; margin: 50px auto; padding: 20px; background: white; border-radius: 10px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2); text-align: center; }
+    h2 { font-family: Arial; font-size: 2.5rem; text-align: center; }
+  </style>
+</head>
+<body>
+
+<h2>Система моніторингу повітря йоу</h2>
+<div id="chart-temperature" class="container"></div>
+<div id="chart-humidity" class="container"></div>
+<div id="chart-pressure" class="container"></div>
+<div id="chart-altitude" class="container"></div>
+<div id="chart-gasvalue" class="container"></div>
+
+<button style="display: flex; margin-bottom: 25px; margin-left: 15px;" class="button" onclick="window.location.href='/'">Перехід до головної сторінки</button>
+
+<script>
+Highcharts.setOptions({
+  time: {
+    useUTC: false  // Показывать время по локальному часовому поясу
+  }
+});
+
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz5DH-UVC3OJGBq_cwbqnHYcQ8yQrNXM3-5Eae46Lg5RiIN2RJkpU4L8D49dAnMRME5/exec';
+
+function createChart(containerId, titleText, yAxisText, seriesColor) {
+  return new Highcharts.StockChart({
+    chart: { renderTo: containerId },
+    title: { text: titleText },
+    rangeSelector: {
+      buttons: [
+        { count: 1, type: 'day', text: '1д' },
+        { count: 7, type: 'day', text: '7д' },
+        { count: 1, type: 'month', text: '1міс' },
+        { type: 'all', text: 'Все' }
+      ],
+      selected: 0
+    },
+    series: [{
+      showInLegend: false,
+      data: [],
+      tooltip: { valueDecimals: 2 }
+    }],
+    plotOptions: {
+      line: {
+        animation: false,
+        dataLabels: { enabled: true }
+      },
+      series: { color: seriesColor }
+    },
+    yAxis: { title: { text: yAxisText } },
+    credits: { enabled: false }
+  });
+}
+
+// Создаём все графики
+const chartT = createChart('chart-temperature', 'Температура', 'Температура (°C)', '#059e8a');
+const chartH = createChart('chart-humidity', 'Вологість', 'Вологість (%)', '#1E90FF');
+const chartP = createChart('chart-pressure', 'Атмосферний тиск', 'Атмосферний тиск (hPa)', '#32CD32');
+const chartA = createChart('chart-altitude', 'Висота над рівнем моря', 'Висота над рівнем моря (m)', '#FFA500');
+const chartG = createChart('chart-gasvalue', 'Сукупність газів у повітрі', 'Сукупність газів у повітрі (ppm)', '#DC143C');
+
+// Загрузка истории из Google Таблицы
+fetch(GAS_URL)
+  .then(response => response.json())
+  .then(data => {
+    const formattedT = [], formattedH = [], formattedP = [], formattedA = [], formattedG = [];
+    data.forEach(entry => {
+      const time = new Date(entry.timestamp).getTime();
+      formattedT.push([time, parseFloat(entry.temperature)]);
+      formattedH.push([time, parseFloat(entry.humidity)]);
+      formattedP.push([time, parseFloat(entry.pressure)]);
+      formattedA.push([time, parseFloat(entry.altitude)]);
+      formattedG.push([time, parseFloat(entry.gasValue)]);
+    });
+    chartT.series[0].setData(formattedT);
+    chartH.series[0].setData(formattedH);
+    chartP.series[0].setData(formattedP);
+    chartA.series[0].setData(formattedA);
+    chartG.series[0].setData(formattedG);
+  })
+  .catch(error => {
+    console.error('Ошибка загрузки данных из Google Таблицы:', error);
+  });
+
+// 🔹 Функция для обновления данных каждые 10 секунд
+function setupLiveUpdate(endpoint, chart) {
+  setInterval(() => {
+    fetch(endpoint)
+      .then(response => response.text())
+      .then(valueStr => {
+        const x = (new Date()).getTime();
+        const y = parseFloat(valueStr);
+        if (chart.series[0].data.length > 50) {
+          chart.series[0].addPoint([x, y], true, true, true);
+        } else {
+          chart.series[0].addPoint([x, y], true, false, true);
+        }
+      })
+      .catch(error => {
+        console.error(`Ошибка получения данных с ${endpoint}:`, error);
+      });
+  }, 10000);
+}
+
+// Настройка обновлений для всех графиков
+setupLiveUpdate('/temperature', chartT);
+setupLiveUpdate('/humidity', chartH);
+setupLiveUpdate('/pressure', chartP);
+setupLiveUpdate('/altitude', chartA);
+setupLiveUpdate('/gasvalue', chartG);
+</script>
+
+</body>
+</html>

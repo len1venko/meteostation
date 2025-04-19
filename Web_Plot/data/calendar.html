@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <title>Сторінка з календарем</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f3f3f3; color: #333; }
+    .container { max-width: 800px; margin: 50px auto; padding: 20px; background: white; border-radius: 10px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2); text-align: center; }
+    .title { font-size: 24px; font-weight: bold; margin-bottom: 20px; }
+    .card { display: flex; align-items: center; justify-content: space-between; background: #f9f9f9; padding: 15px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); }
+    .icon { font-size: 30px; margin-right: 20px; }
+    .text { flex: 1; text-align: left; font-size: 18px; font-weight: 500; }
+    .value { font-size: 18px; font-weight: bold; color: #333; }
+  </style>
+
+  <link rel="stylesheet" href="/pac.css">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+    <!-- FullCalendar -->
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js"></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+    const calendarEl = document.getElementById('calendar');
+    let calendar = null;
+    let existingEvents = {};  // Сохраняем зафиксированные события по дате
+
+    // Функция: выбираем наивысший уровень газа
+    const getPriorityLevel = (levels) => {
+      if (levels.includes('🚨 Опасный газ')) return '🚨 Опасный газ';
+      if (levels.includes('⚠️ Средний уровень газа')) return '⚠️ Средний уровень газа';
+      return '✅ Норма';
+    };
+
+    const fetchAndUpdateCalendar = () => {
+      fetch('https://script.google.com/macros/s/AKfycbz5DH-UVC3OJGBq_cwbqnHYcQ8yQrNXM3-5Eae46Lg5RiIN2RJkpU4L8D49dAnMRME5/exec')
+        .then(response => response.json())
+        .then(data => {
+          let dateLevels = {};  // { '2025-03-19': ['✅ Норма', '🚨 Опасный газ', ...], ... }
+
+          data.forEach(item => {
+            const gasLevel = parseFloat(item.gasValue);
+            const date = item.timestamp.split('T')[0];
+
+            let level = '✅ Газ не було зафіксовано';
+            if (gasLevel > 400) level = '🚨 Було зафіксовано небезпечну кількість газу';
+            else if (gasLevel > 300) level = '⚠️ Було зафіксовано незначну кількість газу';
+
+            if (!dateLevels[date]) dateLevels[date] = [];
+            dateLevels[date].push(level);
+          });
+
+          let newEvents = [];
+
+          for (let date in dateLevels) {
+            if (existingEvents[date]) continue;  // Уже зафиксировано событие — не меняем
+
+            const priorityLevel = getPriorityLevel(dateLevels[date]);
+            existingEvents[date] = priorityLevel;
+
+            newEvents.push({
+              title: priorityLevel,
+              start: date + 'T00:00:00',
+              end: date + 'T23:59:59',
+              allDay: true
+            });
+          }
+
+          // Объединяем старые и новые события
+          const allEvents = Object.entries(existingEvents).map(([date, title]) => ({
+            title,
+            start: date + 'T00:00:00',
+            end: date + 'T23:59:59',
+            allDay: true
+          }));
+
+          // Обновляем календарь только если он ещё не создан
+          if (!calendar) {
+            calendar = new FullCalendar.Calendar(calendarEl, {
+              initialView: 'dayGridMonth',
+              events: allEvents,
+              eventContent: function(info) {
+                return { html: info.event.title };
+              },
+              eventClassNames: ['no-highlight'],
+              dateClick: function(info) {
+                fetchDailyData(info.dateStr);  // вызываем функцию при клике на день
+              }
+            });
+            calendar.render();
+          } else {
+            calendar.removeAllEvents();
+            calendar.addEventSource(allEvents);
+          }
+        })
+        .catch(err => {
+          console.error('Ошибка загрузки данных:', err);
+        });
+    };
+    
+
+    // Первичная загрузка
+    fetchAndUpdateCalendar();
+
+    // Проверка каждые 10 секунд, но не перезаписываем события
+    setInterval(fetchAndUpdateCalendar, 10000);
+
+    function fetchDailyData(dateStr) {
+    fetch('https://script.google.com/macros/s/AKfycbz5DH-UVC3OJGBq_cwbqnHYcQ8yQrNXM3-5Eae46Lg5RiIN2RJkpU4L8D49dAnMRME5/exec')
+      .then(response => response.json())
+      .then(data => {
+        let filtered = data.filter(item => item.timestamp.startsWith(dateStr));
+
+        if (filtered.length === 0) {
+          alert("Немає даних за " + dateStr);
+          return;
+        }
+
+        let tempSum = 0, humSum = 0, pressSum = 0, altSum = 0, gasSum = 0;
+
+        filtered.forEach(item => {
+          tempSum += parseFloat(item.temperature);
+          humSum += parseFloat(item.humidity);
+          pressSum += parseFloat(item.pressure);
+          altSum += parseFloat(item.altitude);
+          gasSum += parseFloat(item.gasValue);
+        });
+
+        let count = filtered.length;
+
+        let avgTemp = (tempSum / count).toFixed(2);
+        let avgHum = (humSum / count).toFixed(2);
+        let avgPress = (pressSum / count).toFixed(2);
+        let avgAlt = (altSum / count).toFixed(2);
+        let avgGas = (gasSum / count).toFixed(2);
+
+        alert(
+          `Середні значення за ${dateStr}:\n` +
+          `🌡 Температура: ${avgTemp} °C\n` +
+          `💧 Вологість: ${avgHum} %\n` +
+          `💨 Тиск: ${avgPress} hPa\n` +
+          `⛰ Висота: ${avgAlt} m\n` +
+          `🛢 Газ: ${avgGas} ppm`
+        );
+      })
+      .catch(err => {
+        console.error('Помилка отримання даних:', err);
+      });
+  }
+    });
+
+  </script>  
+
+
+  <div class='container'>
+    <div class='title'>Календар наявності газу</div> <br>
+  <div id="calendar"></div>
+</div>
+
+<button style="display: flex; margin-bottom: 25px; margin-left: 15px;" class="button" onclick="window.location.href='/'">Перехід до головної сторінки</button>
+
+</body>
+</html>

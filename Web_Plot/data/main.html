@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <title>Головна сторінка</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f3f3f3; color: #333; }
+    .container { max-width: 800px; margin: 50px auto; padding: 20px; background: white; border-radius: 10px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2); text-align: center; }
+    .title { font-size: 24px; font-weight: bold; margin-bottom: 20px; }
+    .card { display: flex; align-items: center; justify-content: space-between; background: #f9f9f9; padding: 15px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); }
+    .icon { font-size: 30px; margin-right: 20px; }
+    .text { flex: 1; text-align: left; font-size: 18px; font-weight: 500; }
+    .value { font-size: 18px; font-weight: bold; color: #333; }
+  </style>
+
+  <link rel="stylesheet" href="/pac.css">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <script>
+    function sendTelegramAlert(message) {
+    const telegramBotToken = "7639996461:AAE1Grm61BEjUb6uGqdIz1pvmTO5z4n6-Ak"; 
+    const chatId = "879978878";         
+
+    const url = `https://api.telegram.org/bot${telegramBotToken}/sendMessage`;
+
+    const payload = {
+        chat_id: chatId,
+        text: message
+    };
+
+    fetch(url, {
+        method: "POST",
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log("Повідомлення надіслано:", data);
+    })
+    .catch(error => {
+        console.error("Помилка надсилання в Telegram:", error);
+    });
+  }
+
+    let gasAlertSent = false;
+
+    function updateData() {
+    fetch('http://192.168.0.100/temperature')
+      .then(response => response.text())
+      .then(data => document.getElementById('temperature').innerText = data + " °C");
+
+    fetch('http://192.168.0.100/humidity')
+      .then(response => response.text())
+      .then(data => document.getElementById('humidity').innerText = data + " %");
+
+    fetch('http://192.168.0.100/pressure')
+      .then(response => response.text())
+      .then(data => document.getElementById('pressure').innerText = data + " hPa");
+
+    fetch('http://192.168.0.100/altitude')
+      .then(response => response.text())
+      .then(data => document.getElementById('altitude').innerText = data + " m");
+
+    fetch('http://192.168.0.100/gasvalue')
+      .then(response => response.text())
+      .then(data => {
+        document.getElementById('gasValue').innerText = data + " ppm";
+
+        const gasLevel = parseFloat(data);
+        const stateText = (gasLevel > 400) ? "Небезпечний рівень!" : "Все в нормі!";
+        document.getElementById('gasState').innerText = stateText;
+
+        // ⚠️ Если газ опасен — отправляем Telegram сообщение
+        if (stateText === "Небезпечний рівень!") {
+            sendTelegramAlert(`⚠️ УВАГА! Зафіксовано небезпечний рівень газу: ${gasLevel} ppm`);
+        }
+      });
+    }
+    
+    // Отправка данных в Google Таблицу
+    function sendDataToGoogleSheet() {
+        var formData = {
+            temperature: document.getElementById('temperature').innerText,
+            humidity: document.getElementById('humidity').innerText,
+            pressure: document.getElementById('pressure').innerText,
+            altitude: document.getElementById('altitude').innerText,
+            gasValue: document.getElementById('gasValue').innerText,
+            gasState: document.getElementById('gasState').innerText
+        };
+    
+        fetch('https://script.google.com/macros/s/AKfycbz5DH-UVC3OJGBq_cwbqnHYcQ8yQrNXM3-5Eae46Lg5RiIN2RJkpU4L8D49dAnMRME5/exec', {
+            method: 'POST',
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.text())
+        .then(data => {
+            console.log("Дані надіслано: " + data);
+        })
+        .catch(error => {
+            console.error('Помилка надсилання:', error);
+        });
+    }
+    
+    setInterval(() => {
+        updateData();
+        // Подожди 500 мс чтобы данные обновились, затем отправь
+        setTimeout(sendDataToGoogleSheet, 500);
+    }, 10000); // каждые 10 секунд
+    
+    window.onload = updateData;
+    </script>
+    
+
+</head>
+<body>
+  <div class='container'>
+    <div class='title'>Дані про стан повітря</div> <br>
+    <div class='card'>
+      <div class='icon'>🌡</div>
+      <div class='text'>Температура</div>
+      <div class='value' id="temperature">Загрузка...</div>
+    </div>
+    <div class='card'>
+      <div class='icon'>💧</div>
+      <div class='text'>Вологість</div>
+      <div class='value' id="humidity">Загрузка...</div>
+    </div>
+    <div class='card'>
+      <div class='icon'>💨</div>
+      <div class='text'>Атмосферний тиск</div>
+      <div class='value' id="pressure">Загрузка...</div>
+    </div>
+    <div class='card'>
+      <div class='icon'>⛰</div>
+      <div class='text'>Висота над рівнем моря</div>
+      <div class='value' id="altitude">Загрузка...</div>
+    </div>
+    <div class='card'>
+      <div class='icon'>🛢</div>
+      <div class='text'>Рівень газу в повітрі</div>
+      <div class='value' id="gasValue">Загрузка...</div>
+    </div>
+    <div class='card'>
+      <div class='icon'>⚠️</div>
+      <div class='text'>Наявність газу</div>
+      <div class='value' id="gasState">Загрузка...</div>
+    </div> <br>
+
+    <button class="button" onclick="window.location.href='/index'">Перехід до сторінки з графіками</button>
+    <button class="button" onclick="window.location.href='/calendar'">Перехід до сторінки з календарем</button>
+  </div>
+
+</body>
+</html>
